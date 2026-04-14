@@ -3,6 +3,48 @@ import { System, Log, SystemContext } from "./system";
 
 type Mp = any; // TODO
 
+const STARTER_KIT = {
+  raggedRobesBaseId: 0x00013105,
+  raggedBootsBaseId: 0x00013106,
+  woodcuttersAxeBaseId: 0x0002f2f4,
+  pickaxeBaseId: 0x000e3c16,
+  goldBaseId: 0x0000000f,
+  goldCount: 40,
+} as const;
+
+function applyStarterKitForNewCharacter(mp: Mp, actorId: number) {
+  const actor = { type: "form", desc: mp.getDescFromId(actorId) };
+
+  mp.callPapyrusFunction(
+    "method",
+    "ObjectReference",
+    "RemoveAllItems",
+    actor,
+    [null, false, true]
+  );
+
+  const add = (baseId: number, count: number) => {
+    const item = { type: "espm", desc: mp.getDescFromId(baseId) };
+    mp.callPapyrusFunction("method", "ObjectReference", "AddItem", actor, [item, count, false, null]);
+  };
+
+  add(STARTER_KIT.goldBaseId, STARTER_KIT.goldCount);
+  add(STARTER_KIT.pickaxeBaseId, 1);
+  add(STARTER_KIT.woodcuttersAxeBaseId, 1);
+  add(STARTER_KIT.raggedRobesBaseId, 1);
+  add(STARTER_KIT.raggedBootsBaseId, 1);
+
+  const equip = (baseId: number) => {
+    const item = { type: "espm", desc: mp.getDescFromId(baseId) };
+    mp.callPapyrusFunction("method", "Actor", "EquipItem", actor, [item]);
+  };
+
+  equip(STARTER_KIT.raggedRobesBaseId);
+  equip(STARTER_KIT.raggedBootsBaseId);
+
+  mp.set(actorId, "private.skyv.starterKitApplied", true);
+}
+
 function randomInteger(min: number, max: number) {
   const rand = min + Math.random() * (max + 1 - min);
   return Math.floor(rand);
@@ -23,6 +65,7 @@ export class Spawn implements System {
         ctx.svr.setEnabled(actorId, true);
         ctx.svr.setUserActor(userId, actorId);
       } else {
+        const mp = ctx.svr as unknown as Mp;
         const idx = randomInteger(0, startPoints.length - 1);
         actorId = ctx.svr.createActor(
           0,
@@ -33,6 +76,7 @@ export class Spawn implements System {
         );
         this.log("Creating character", actorId.toString(16));
         ctx.svr.setUserActor(userId, actorId);
+        applyStarterKitForNewCharacter(mp, actorId);
         ctx.svr.setRaceMenuOpen(actorId, true);
       }
 

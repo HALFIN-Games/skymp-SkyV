@@ -84,7 +84,30 @@ After copy, confirm these exist:
 - `Data\\SKSE\\Plugins\\MpClientPlugin.dll`
 - `Data\\Platform\\Plugins\\skymp5-client.js`
 
-### 3.4 Keep the tester environment clean
+### 3.4 Set the server IP/port
+
+The client reads its connection target from:
+
+- `<SkyrimRoot>\\Data\\Platform\\Plugins\\skymp5-client-settings.txt`
+
+Edit that file and set:
+
+- `server-ip`: server public IPv4 (or DNS)
+- `server-port`: `7777`
+
+Example:
+
+```json
+{
+  "server-ip": "16.16.122.192",
+  "server-port": 7777,
+  "server-info-ignore": true
+}
+```
+
+`server-info-ignore: true` forces direct connect and avoids any gateway/server-info lookup.
+
+### 3.5 Keep the tester environment clean
 
 For the spike, disable all non-SkyMP SKSE plugins. Only these should remain in `Data\\SKSE\\Plugins`:
 
@@ -137,4 +160,3 @@ If the tester can’t connect, allow inbound UDP `7777` on the host PC for Priva
 
 - Black screen after launching via SKSE usually indicates a conflicting SKSE plugin; keep `Data\\SKSE\\Plugins` minimal.
 - If “single player” appears to resume multiplayer state, ensure a clean profile in `Documents\\My Games\\Skyrim Special Edition\\`.
-

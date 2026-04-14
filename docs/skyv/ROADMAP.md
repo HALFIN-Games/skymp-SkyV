@@ -39,6 +39,11 @@ Outcomes:
   - persistence adapter (SQLite)
   - server registration heartbeat to directory (stub allowed)
 
+- Vokun RP v0 join-flow foundations:
+  - multi-character model (per account)
+  - reserved slots policy enforcement
+  - soft delete + server-side hard delete tooling
+
 Exit criteria:
 
 - Server can enforce a ban and run at least one resource-provided command.
@@ -50,6 +55,8 @@ Outcomes:
 - Login (stub allowed), server browser (stub allowed), join flow.
 - Pack manifest format defined; downloader + verifier implemented.
 - Launch/connect orchestration works reliably for one server pack.
+
+- Decide and implement the downloadable “loader” app parameters for players.
 
 Exit criteria:
 
@@ -75,4 +82,3 @@ Outcomes (example slice):
 - A simple economy/progression loop.
 - One minigame/activity.
 - Admin tooling for bans/roles/logs.
-

@@ -63,6 +63,7 @@ Functional features:
 
 - Server browser (name, description, ping, player count, version).
 - Join flow with pack download/verification/launch.
+- Multi-character support (per account) and a character-first join flow.
 - Account login + token issuance.
 - Server-side roles/ACL + ban list.
 - Scriptable server “resource” system with at least:
@@ -86,4 +87,3 @@ Operational features:
 - Join success rate > 95% (after first pack download).
 - In a 60–100 player town test, average client FPS and crash rate within acceptable thresholds (to be defined during spike).
 - Voice remains intelligible in crowded areas (measured by subjective testing and audibility/mixing constraints).
-

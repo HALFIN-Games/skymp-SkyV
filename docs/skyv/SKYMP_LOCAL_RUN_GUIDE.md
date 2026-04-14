@@ -115,7 +115,32 @@ All should be `True`.
 1. Ensure the server is still running.
 2. Launch:
    - `$skyrimRoot\skse64_loader.exe`
-3. Connect to `127.0.0.1:7777`.
+3. Point the client at your server (IP/port).
+
+SkyMP reads connection settings from:
+
+- `<SkyrimRoot>\Data\Platform\Plugins\skymp5-client-settings.txt`
+
+Edit the JSON in that file to set:
+
+- `server-ip`
+- `server-port`
+
+Example (VPS):
+
+```json
+{
+  "server-ip": "16.16.122.192",
+  "server-port": 7777,
+  "server-info-ignore": true
+}
+```
+
+`server-info-ignore: true` forces direct connect and avoids any gateway/server-info lookup.
+
+For local testing, use:
+
+- `127.0.0.1:7777`
 
 If you see logs like:
 
@@ -141,4 +166,3 @@ Use `& "C:\Program Files\nodejs\node.exe" ...` to bypass PATH issues.
 ### Load order mismatch (modded client)
 
 SkyMP expects client and server load order to match. For a clean spike, run a vanilla-only client (only the 5 masters enabled) before trying modded setups.
-

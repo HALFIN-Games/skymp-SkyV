@@ -133,6 +133,16 @@ async function fetchServerSettings(): Promise<any> {
   const rawSettings = fs.readFileSync(settingsPath, 'utf8');
   let serverSettingsFile = JSON.parse(rawSettings);
 
+  // Optional local overrides that must not be committed (instance-specific values, secrets).
+  // This lets VPS operators keep a stable, committed baseline `server-settings.json` and
+  // apply per-machine overrides via `server-settings.local.json`.
+  const localSettingsPath = 'server-settings.local.json';
+  if (fs.existsSync(localSettingsPath)) {
+    const rawLocalSettings = fs.readFileSync(localSettingsPath, 'utf8');
+    const localSettingsFile = JSON.parse(rawLocalSettings);
+    serverSettingsFile = lodash.merge(serverSettingsFile, localSettingsFile);
+  }
+
   let serverSettings: Record<string, unknown> = {};
 
   const additionalServerSettings = serverSettingsFile.additionalServerSettings || [];

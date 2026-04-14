@@ -10,6 +10,9 @@ node_modules
 .*.swp
 skyrim_data_files/
 
+# Local server settings overrides (never commit)
+server-settings.local.json
+
 # Repo-local working dirs
 /external/
 /staging/

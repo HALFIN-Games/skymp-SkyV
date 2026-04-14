@@ -14,4 +14,5 @@ Start here:
 - `BASELINE_SNAPSHOT.md` — pinned known-good versions/settings
 - `TESTER_KIT.md` — how to package a pre-launcher client kit
 - `EC2_DEPLOY_GUIDE.md` — pinned-commit EC2 deployment steps
-
+- `VPS_SERVER_RUNBOOK.md` — copy/paste server start/stop/troubleshooting on VPS
+- `VOKUN_RP_V0.md` — Vokun RP v0 feature requirements (join flow, characters, queue)

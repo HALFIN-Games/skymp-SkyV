@@ -102,6 +102,12 @@ Copy it onto the server as:
 
 - `~/skymp/build/dist/server/server-settings.json`
 
+Optional local overrides (recommended for VPS-specific values and secrets):
+
+- `~/skymp/build/dist/server/server-settings.local.json`
+
+This file is merged on top of `server-settings.json` at runtime and should not be committed.
+
 ### 6.2 Master files
 
 The server expects vanilla master files to exist in the server `data` dir.
@@ -136,3 +142,45 @@ node dist_back/skymp5-server.js
 - If testers are remote, use the instance public IPv4 (or Elastic IP):
   - `<public_ip>:7777`
 
+---
+
+## 9) systemd (keep server running after SSH disconnect)
+
+If you start the server from an SSH shell and then disconnect, it may stop depending on how it was launched.
+Use `systemd` to run it as a service and automatically restart on reboot/crash.
+
+Create a unit file:
+
+```bash
+sudo tee /etc/systemd/system/skyv-skymp.service > /dev/null <<'EOF'
+[Unit]
+Description=SkyV SkyMP Server
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/skyv/build/dist/server
+ExecStart=/usr/bin/node dist_back/skymp5-server.js
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Enable + start:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now skyv-skymp.service
+```
+
+Check status and logs:
+
+```bash
+sudo systemctl status skyv-skymp.service --no-pager
+sudo journalctl -u skyv-skymp.service -f
+```

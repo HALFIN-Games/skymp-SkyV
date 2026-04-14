@@ -68,6 +68,17 @@ Compress-Archive -Path "$kitRoot\*" -DestinationPath $zipPath
 3. Install SKSE into the Skyrim root folder and verify logs exist.
 4. Copy `client\\Data\\*` from the kit into Skyrim `Data\\`.
 5. Ensure only SkyMP plugins are enabled in `Data\\SKSE\\Plugins`.
-6. Launch via `skse64_loader.exe`.
-7. When ready to connect remotely, install Tailscale and connect to `<host_tailscale_ip>:7777`.
+6. Set the server IP/port in:
+   - `<SkyrimRoot>\\Data\\Platform\\Plugins\\skymp5-client-settings.txt`
 
+   Example:
+
+   ```json
+   {
+     "server-ip": "16.16.122.192",
+     "server-port": 7777,
+     "server-info-ignore": true
+   }
+   ```
+7. Launch via `skse64_loader.exe`.
+8. Connect.
