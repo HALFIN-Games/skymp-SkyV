@@ -178,3 +178,29 @@ EOF
 sudo systemctl restart skyv-skymp.service
 sudo systemctl status skyv-skymp.service --no-pager
 ```
+
+---
+
+## 8) Back up server world (characters/persistence)
+
+Server persistence is stored in `world*` files inside the server working directory.
+Back up these files before risky changes.
+
+```bash
+sudo systemctl stop skyv-skymp.service
+
+cd /home/ubuntu/skyv/build/dist/server
+
+stamp=$(date +%F_%H%M%S)
+mkdir -p backups/$stamp
+cp -a world* backups/$stamp/ 2>/dev/null || true
+
+sudo systemctl start skyv-skymp.service
+sudo systemctl status skyv-skymp.service --no-pager
+```
+
+Verify backups:
+
+```bash
+ls -la /home/ubuntu/skyv/build/dist/server/backups | tail
+```
