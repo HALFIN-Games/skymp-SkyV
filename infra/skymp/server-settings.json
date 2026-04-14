@@ -1,0 +1,18 @@
+{
+  "dataDir": "data",
+  "loadOrder": [
+    "Skyrim.esm",
+    "Update.esm",
+    "Dawnguard.esm",
+    "HearthFires.esm",
+    "Dragonborn.esm"
+  ],
+  "master": "",
+  "maxPlayers": 100,
+  "name": "My Server",
+  "npcEnabled": false,
+  "npcSettings": {},
+  "offlineMode": true,
+  "port": 7777
+}
+

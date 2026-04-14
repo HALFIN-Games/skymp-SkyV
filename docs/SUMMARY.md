@@ -34,3 +34,7 @@
 ## Game Mechanics
 
 - [Damage calculation and hit handling](docs_onhit_and_damage.md)
+
+## SkyV
+
+- [SkyV docs index](skyv/INDEX.md)

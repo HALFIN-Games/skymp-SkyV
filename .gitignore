@@ -9,3 +9,10 @@ node_modules
 # vim
 .*.swp
 skyrim_data_files/
+
+# Repo-local working dirs
+/external/
+/staging/
+/backups/
+/testing kits/
+/ssh/
