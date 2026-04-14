@@ -13,34 +13,15 @@ const STARTER_KIT = {
 } as const;
 
 function applyStarterKitForNewCharacter(mp: Mp, actorId: number) {
-  const actor = { type: "form", desc: mp.getDescFromId(actorId) };
-
-  mp.callPapyrusFunction(
-    "method",
-    "ObjectReference",
-    "RemoveAllItems",
-    actor,
-    [null, false, true]
-  );
-
-  const add = (baseId: number, count: number) => {
-    const item = { type: "espm", desc: mp.getDescFromId(baseId) };
-    mp.callPapyrusFunction("method", "ObjectReference", "AddItem", actor, [item, count, false, null]);
-  };
-
-  add(STARTER_KIT.goldBaseId, STARTER_KIT.goldCount);
-  add(STARTER_KIT.pickaxeBaseId, 1);
-  add(STARTER_KIT.woodcuttersAxeBaseId, 1);
-  add(STARTER_KIT.raggedRobesBaseId, 1);
-  add(STARTER_KIT.raggedBootsBaseId, 1);
-
-  const equip = (baseId: number) => {
-    const item = { type: "espm", desc: mp.getDescFromId(baseId) };
-    mp.callPapyrusFunction("method", "Actor", "EquipItem", actor, [item]);
-  };
-
-  equip(STARTER_KIT.raggedRobesBaseId);
-  equip(STARTER_KIT.raggedBootsBaseId);
+  mp.set(actorId, "inventory", {
+    entries: [
+      { baseId: STARTER_KIT.goldBaseId, count: STARTER_KIT.goldCount },
+      { baseId: STARTER_KIT.pickaxeBaseId, count: 1 },
+      { baseId: STARTER_KIT.woodcuttersAxeBaseId, count: 1 },
+      { baseId: STARTER_KIT.raggedRobesBaseId, count: 1, worn: true },
+      { baseId: STARTER_KIT.raggedBootsBaseId, count: 1, worn: true },
+    ],
+  });
 
   mp.set(actorId, "private.skyv.starterKitApplied", true);
 }
