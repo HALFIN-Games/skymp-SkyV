@@ -9,10 +9,9 @@
   ],
   "master": "",
   "maxPlayers": 100,
-  "name": "My Server",
+  "name": "Vokun RP",
   "npcEnabled": false,
   "npcSettings": {},
   "offlineMode": true,
   "port": 7777
 }
-
