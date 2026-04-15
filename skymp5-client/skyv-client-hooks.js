@@ -1,4 +1,15 @@
-const { on, Utility, Game, Armor, writeLogs } = require('skyrimPlatform');
+let sp;
+try {
+  sp = require('skyrimPlatform');
+} catch {
+  sp = globalThis.skyrimPlatform;
+}
+
+if (!sp) {
+  throw new Error('skyrimPlatform global not found');
+}
+
+const { on, Utility, Game, Armor, writeLogs } = sp;
 
 const RAGGED_ROBES = 0x00013105;
 const RAGGED_BOOTS = 0x00013106;
