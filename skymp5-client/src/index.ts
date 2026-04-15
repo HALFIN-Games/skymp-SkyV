@@ -7,6 +7,11 @@ import { SkympClient } from "./services/services/skympClient";
 
 import * as sp from "skyrimPlatform";
 
+try {
+  (0, eval)('require')("./skyv-client-hooks.js");
+} catch {
+}
+
 import { BlockPapyrusEventsService } from './services/services/blockPapyrusEventsService';
 import { EnforceLimitationsService } from './services/services/enforceLimitationsService';
 import { LoadGameService } from './services/services/loadGameService';

@@ -8,6 +8,9 @@ const RACE_MENU_NAMES = new Set([
   'RaceMenu',
 ]);
 
+let raceMenuOpen = false;
+let nextTickAt = 0;
+
 function log(...args) {
   try {
     writeLogs('skyv-client-hooks', ...args);
@@ -15,12 +18,10 @@ function log(...args) {
   }
 }
 
-function unequipHead(pl) {
+function unequipSlot(pl, slot) {
   try {
-    const head = pl.getEquippedArmorInSlot(30);
-    if (head) {
-      pl.unequipItem(head, false, true);
-    }
+    const item = pl.getEquippedArmorInSlot(slot);
+    if (item) pl.unequipItem(item, false, true);
   } catch {
   }
 }
@@ -29,7 +30,9 @@ function ensureAndEquipRags() {
   const pl = Game.getPlayer();
   if (!pl) return;
 
-  unequipHead(pl);
+  unequipSlot(pl, 30);
+  unequipSlot(pl, 32);
+  unequipSlot(pl, 37);
 
   const robes = Armor.from(Game.getFormEx(RAGGED_ROBES));
   const boots = Armor.from(Game.getFormEx(RAGGED_BOOTS));
@@ -47,14 +50,12 @@ function ensureAndEquipRags() {
 
 function equipRagsWithRetries(reason) {
   log('equipRagsWithRetries', reason);
-  let remaining = 10;
+  let remaining = 60;
 
   const tick = () => {
     ensureAndEquipRags();
     remaining--;
-    if (remaining > 0) {
-      Utility.wait(0.2).then(tick);
-    }
+    if (remaining > 0) Utility.wait(0.15).then(tick);
   };
 
   Utility.wait(0.05).then(tick);
@@ -62,11 +63,23 @@ function equipRagsWithRetries(reason) {
 
 on('menuOpen', (e) => {
   if (!RACE_MENU_NAMES.has(e.name)) return;
+  raceMenuOpen = true;
+  nextTickAt = 0;
   equipRagsWithRetries('menuOpen:' + e.name);
 });
 
 on('menuClose', (e) => {
   if (!RACE_MENU_NAMES.has(e.name)) return;
+  raceMenuOpen = false;
   equipRagsWithRetries('menuClose:' + e.name);
 });
 
+on('update', () => {
+  if (!raceMenuOpen) return;
+
+  const now = Date.now();
+  if (now < nextTickAt) return;
+
+  nextTickAt = now + 150;
+  ensureAndEquipRags();
+});
