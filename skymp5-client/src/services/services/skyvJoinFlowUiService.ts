@@ -8,6 +8,7 @@ const events = {
   selectCharacter: 'skyvJoin_selectCharacter',
   createCharacter: 'skyvJoin_createCharacter',
   cancelQueue: 'skyvJoin_cancelQueue',
+  closeUi: 'skyvJoin_closeUi',
 } as const;
 
 type Screen = 'rules' | 'characters' | 'queue';
@@ -90,6 +91,11 @@ export class SkyvJoinFlowUiService extends ClientListener {
       this.state.selectedCharacterId = null;
       this.writeState(this.state);
       this.render();
+      return;
+    }
+
+    if (key === events.closeUi) {
+      this.close();
       return;
     }
   }
@@ -208,7 +214,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
         'padding:8px 12px',
         'cursor:pointer'
       ].join(';');
-      closeBtn.onclick = () => send(${JSON.stringify(events.showCharacters)});
+      closeBtn.onclick = () => send(${JSON.stringify(events.closeUi)});
 
       header.appendChild(titleWrap);
       header.appendChild(closeBtn);
@@ -353,4 +359,3 @@ export class SkyvJoinFlowUiService extends ClientListener {
   private mainMenuOpen = false;
   private listening = false;
 }
-
