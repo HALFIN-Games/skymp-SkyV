@@ -66,7 +66,101 @@ Persistence:
 
 - queue state does not need to persist across server restarts
 
-### 1.4 Implementation notes (current)
+### 1.4 Player identity (Discord-linked)
+
+We need a stable, cross-session identity to:
+
+- decide the character slot limit (5 vs 10)
+- decide reserved slot access
+- decide queue priority
+- support later whitelist approvals
+
+Identity source of truth:
+
+- Discord account (`discord_id`)
+
+Server-side data (per account):
+
+- `discord_id`
+- cached Discord role ids (optional)
+- derived `player_type` (e.g., `admin`, `member`, `guest`)
+- `hasAcknowledgedRules`
+
+Role mapping (configurable):
+
+- Discord role “Admin” -> `player_type=admin`
+  - 10 character slots
+  - can occupy reserved slots
+  - higher queue priority
+- Discord role “Member” -> `player_type=member`
+  - 5 character slots
+  - normal queue priority
+- No required role -> `player_type=guest` (optional)
+  - minimal/limited access (optional)
+
+### 1.5 Discord auth (OAuth2)
+
+Auth goals:
+
+- server can prove the player owns a Discord identity
+- server can read the player’s roles in the official Discord guild
+
+Recommended OAuth scopes (Discord):
+
+- `identify`
+- `guilds.members.read` (preferred if available for the bot/app)
+
+Flow:
+
+1) Client opens a Discord OAuth URL and the user approves.
+2) Discord redirects back with a short-lived `code`.
+3) Server exchanges `code` for an access token.
+4) Server fetches `discord_id` and guild roles.
+5) Server maps roles -> `player_type`.
+
+Caching:
+
+- cache roles for a short TTL (e.g., 10 minutes)
+- refresh on reconnect when stale
+
+### 1.6 Reserved slots + queue priority
+
+Server capacity model:
+
+- `max_players`
+- `reserved_slots`
+
+Admission rules:
+
+- admins (or role-configured privileged users) may occupy reserved slots
+- everyone else can only occupy non-reserved slots
+
+Queue priority (example):
+
+- `admin`: priority 3
+- `member`: priority 2
+- `guest`: priority 1
+
+Queue behavior:
+
+- if server is full, the player enters the queue
+- UI shows queue position (and optionally ETA later)
+- player can cancel
+
+### 1.7 Whitelist application system (later)
+
+At a later stage we’ll add a whitelist application flow:
+
+- player submits an application
+- staff review and approve/deny
+- on approval:
+  - grant Discord role(s)
+  - grant Discord channel permissions
+  - update server account `player_type` (or rely on role mapping)
+
+This should be designed so Discord remains the source of truth for access.
+
+### 1.8 Implementation notes (current)
 
 - Join UI entrypoint: **main menu**.
 - Join UI theme color: `#0C2D24`.
