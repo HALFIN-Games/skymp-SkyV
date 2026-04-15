@@ -61,6 +61,7 @@ import { SweetCameraEnforcementService } from "./services/services/sweetCameraEn
 import { SweetTaffyNicknamesService } from "./services/services/sweetTaffyNicknamesService";
 import { ServerJsVerificationService } from "./services/services/serverJsVerificationService";
 import { SweetTaffyEvalService } from "./services/services/sweetTaffyEvalService";
+import { SkyvJoinFlowUiService } from "./services/services/skyvJoinFlowUiService";
 
 once("update", () => {
   Utility.setINIBool("bAlwaysActive:General", true);
@@ -107,6 +108,7 @@ const main = () => {
       new LoadOrderVerificationService(sp, controller),
       new BrowserService(sp, controller),
       new AuthService(sp, controller),
+      new SkyvJoinFlowUiService(sp, controller),
       new NetInfoService(sp, controller),
       new AnimDebugService(sp, controller),
       new TimersService(sp, controller),

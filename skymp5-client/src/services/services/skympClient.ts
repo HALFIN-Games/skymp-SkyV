@@ -44,6 +44,16 @@ export class SkympClient extends ClientListener {
       });
       this.controller.emitter.on("authAttempt", (e) => this.onAuthAttempt(e));
     }
+
+    this.controller.emitter.on("skyvJoinConnect", () => {
+      storage.skyvJoinAllowConnect = true;
+      this.controller.once("tick", () => this.establishConnectionConditional());
+    });
+
+    this.controller.emitter.on("skyvJoinCancel", () => {
+      storage.skyvJoinAllowConnect = false;
+      this.controller.lookupListener(networking.NetworkingService).close();
+    });
   }
 
   private onAuthAttempt(e: AuthAttemptEvent) {
@@ -85,6 +95,13 @@ export class SkympClient extends ClientListener {
   }
 
   private establishConnectionConditional() {
+    if (this.isJoinUiEnabled()) {
+      if (storage.skyvJoinAllowConnect !== true) {
+        logTrace(this, 'Join UI enabled; delaying connection until user selects a character');
+        return;
+      }
+    }
+
     const isConnected = this.controller.lookupListener(networking.NetworkingService).isConnected();
     if (isConnected) {
       logTrace(this, 'Reconnect is not required');
@@ -100,5 +117,11 @@ export class SkympClient extends ClientListener {
         this.controller.lookupListener(networking.NetworkingService).connect(host, port);
       },
     );
+  }
+
+  private isJoinUiEnabled() {
+    const cfg = this.sp.settings["skymp5-client"]["skyv-join-ui"];
+    if (typeof cfg === 'boolean') return cfg;
+    return true;
   }
 }

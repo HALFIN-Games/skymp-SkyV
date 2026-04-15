@@ -87,7 +87,10 @@ type EventTypes = {
     'queryBlockSetInventoryEvent': [QueryBlockSetInventoryEvent],
     'queryKeyCodeBindings': [QueryKeyCodeBindings],
     'nicknameCreate': [NicknameCreateEvent],
-    'nicknameDestroy': [NicknameDestroyEvent]
+    'nicknameDestroy': [NicknameDestroyEvent],
+
+    'skyvJoinConnect': [{ characterId: string | null }],
+    'skyvJoinCancel': [{}]
 }
 
 // https://blog.makerx.com.au/a-type-safe-event-emitter-in-node-js/
