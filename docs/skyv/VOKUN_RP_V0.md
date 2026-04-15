@@ -66,6 +66,12 @@ Persistence:
 
 - queue state does not need to persist across server restarts
 
+### 1.4 Implementation notes (current)
+
+- Join UI entrypoint: **main menu**.
+- Join UI theme color: `#0C2D24`.
+- Client setting: `Data\\Platform\\Plugins\\skymp5-client-settings.txt` supports `"skyv-join-ui": true`.
+
 ---
 
 ## 2) Character state rules
