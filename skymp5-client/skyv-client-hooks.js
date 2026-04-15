@@ -86,7 +86,7 @@ function showOverlay() {
     const logoUrl = ${JSON.stringify(logo)};
     if (logoUrl) {
       img.src = logoUrl;
-      img.style.cssText = 'width:220px;height:220px;object-fit:contain;';
+      img.style.cssText = 'width:220px;height:220px;object-fit:contain;filter:brightness(0) invert(1);';
       wrap.appendChild(img);
     } else {
       const ph = document.createElement('div');
@@ -150,7 +150,7 @@ function hideOverlayWithRetries() {
   const tick = () => {
     hideOverlay();
     remaining--;
-    if (remaining > 0) Utility.wait(0.2).then(tick);
+    if (remaining > 0) setTimeout(tick, 200);
   };
   tick();
 }
@@ -201,10 +201,10 @@ function equipRagsWithRetries(reason) {
     if (token !== overlayToken) return;
     ensureAndEquipRags();
     remaining--;
-    if (remaining > 0) Utility.wait(0.15).then(tick);
+    if (remaining > 0) setTimeout(tick, 150);
   };
 
-  Utility.wait(0.05).then(tick);
+  setTimeout(tick, 50);
 }
 
 on('menuOpen', (e) => {
@@ -217,26 +217,26 @@ on('menuOpen', (e) => {
   equipRagsWithRetries('menuOpen:' + e.name);
   const token = overlayToken;
 
-  Utility.wait(0.4).then(() => {
+  setTimeout(() => {
     if (token !== overlayToken) return;
     setOverlayProgress(35);
-  });
+  }, 400);
 
-  Utility.wait(0.9).then(() => {
+  setTimeout(() => {
     if (token !== overlayToken) return;
     setOverlayProgress(70);
-  });
+  }, 900);
 
-  Utility.wait(1.4).then(() => {
+  setTimeout(() => {
     if (token !== overlayToken) return;
     setOverlayProgress(100);
     hideOverlayWithRetries();
-  });
+  }, 1400);
 
-  Utility.wait(4.0).then(() => {
+  setTimeout(() => {
     if (token !== overlayToken) return;
     hideOverlayWithRetries();
-  });
+  }, 4000);
 });
 
 on('menuClose', (e) => {
@@ -247,9 +247,9 @@ on('menuClose', (e) => {
   setOverlayProgress(80);
   equipRagsWithRetries('menuClose:' + e.name);
   const token = overlayToken;
-  Utility.wait(0.25).then(() => {
+  setTimeout(() => {
     if (token !== overlayToken) return;
     setOverlayProgress(100);
     hideOverlayWithRetries();
-  });
+  }, 250);
 });
