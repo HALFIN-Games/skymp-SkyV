@@ -5,6 +5,7 @@
       "client/Data/Platform/Modules/skyrimPlatform.ts",
       "client/Data/Platform/Plugins/skymp5-client.js",
       "client/Data/Platform/Plugins/skymp5-client-settings.txt",
+      "client/Data/Platform/Plugins/skyv-client-hooks.js",
       "server/data/scripts/ActiveMagicEffect.pex",
       "server/dist_back/skymp5-server.js",
       "server/dist_back/skymp5-server.js.map",
