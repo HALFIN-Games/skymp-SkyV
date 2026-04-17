@@ -4,6 +4,7 @@ import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
 import { JoinTicketClaims, JoinTicketVerifier } from "../utils/joinTicket";
 import * as fs from "fs";
+import axios from "axios";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
@@ -78,6 +79,7 @@ export class Login implements System {
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
     this.joinTicketVerifier = JoinTicketVerifier.fromEnvOrDefaultFile();
+    this.identityUrl = process.env.SKYV_IDENTITY_URL ?? "http://127.0.0.1:35800";
 
     this.log(
       `Login system assumed that ${this.masterKey} is our master api key`
@@ -273,8 +275,26 @@ export class Login implements System {
 
     this.markUsed(claims);
 
-    const profileId = this.getOrCreateLocalProfileId(claims.sub);
+    const profileId = await this.resolveProfileId(claims.sub, claims.slots);
     return { id: profileId, discordId: claims.sub, __skyvJoinTicket: true };
+  }
+
+  private async resolveProfileId(discordId: string, slots: number) {
+    try {
+      const res = await axios.post(
+        `${this.identityUrl}/v1/resolve`,
+        { discord_id: discordId, slots },
+        { timeout: 1500 },
+      );
+      const profileId = res?.data?.profile_id;
+      if (typeof profileId === "number" && Number.isFinite(profileId) && profileId > 0) {
+        return profileId;
+      }
+      throw new Error("Bad identity response");
+    } catch (e) {
+      this.log(`SkyV-Identity unavailable; falling back to local mapping (${(e as any)?.message ?? "error"})`);
+      return this.getOrCreateLocalProfileId(discordId);
+    }
   }
 
   private getOrCreateLocalProfileId(discordId: string) {
@@ -330,6 +350,7 @@ export class Login implements System {
   private joinTicketVerifier: JoinTicketVerifier | null = null;
   private usedJtis = new Map<string, number>();
   private lastReplayPruneAt = 0;
+  private identityUrl: string = "http://127.0.0.1:35800";
 
   private postServerLoginToDiscord(eventLogChannelId: string, botToken: string, options: { userId: number, ipToPrint: string, actorIds: string[], profile: UserProfile }) {
     const { userId, ipToPrint, actorIds, profile } = options;
