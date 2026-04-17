@@ -1,6 +1,7 @@
 import { BrowserMessageEvent, Menu, MenuCloseEvent, MenuOpenEvent, storage } from "skyrimPlatform";
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
+import { authGameDataStorageKey } from "../../features/authModel";
 
 const events = {
   ackRules: 'skyvJoin_ackRules',
@@ -10,6 +11,8 @@ const events = {
   cancelQueue: 'skyvJoin_cancelQueue',
   closeUi: 'skyvJoin_closeUi',
 } as const;
+
+const joinTicketEventKey = "skyvJoin_ticket";
 
 type Screen = 'rules' | 'characters' | 'queue';
 
@@ -50,6 +53,14 @@ export class SkyvJoinFlowUiService extends ClientListener {
     const key = e.arguments?.[0];
     if (typeof key !== 'string') return;
 
+    if (key === joinTicketEventKey) {
+      const ticket = e.arguments?.[1];
+      if (typeof ticket !== "string" || ticket.length < 20) return;
+      this.storeJoinTicket(ticket);
+      this.controller.emitter.emit("skyvJoinConnect", { characterId: this.state.selectedCharacterId });
+      return;
+    }
+
     if (key === events.ackRules) {
       this.state.hasAcknowledgedRules = true;
       this.state.screen = 'characters';
@@ -72,7 +83,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       this.state.screen = 'queue';
       this.writeState(this.state);
       this.render();
-      this.controller.emitter.emit("skyvJoinConnect", { characterId: this.state.selectedCharacterId });
+      this.openWebsiteJoin();
       return;
     }
 
@@ -81,7 +92,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       this.state.screen = 'queue';
       this.writeState(this.state);
       this.render();
-      this.controller.emitter.emit("skyvJoinConnect", { characterId: null });
+      this.openWebsiteJoin();
       return;
     }
 
@@ -112,6 +123,27 @@ export class SkyvJoinFlowUiService extends ClientListener {
     }
     this.writeState(this.state);
     this.render();
+  }
+
+  private openWebsiteJoin() {
+    try {
+      this.sp.browser.loadUrl("https://vokunrp.com/game/join");
+      this.sp.browser.setVisible(true);
+      this.sp.browser.setFocused(true);
+    } catch {
+    }
+  }
+
+  private storeJoinTicket(ticket: string) {
+    this.sp.storage[authGameDataStorageKey] = {
+      remote: {
+        session: ticket,
+        masterApiId: 0,
+        discordUsername: null,
+        discordDiscriminator: null,
+        discordAvatar: null,
+      }
+    };
   }
 
   private close() {

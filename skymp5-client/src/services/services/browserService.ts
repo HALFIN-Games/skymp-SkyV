@@ -105,6 +105,5 @@ export class BrowserService extends ClientListener {
     Menu.Stats,
     Menu.Tween,
     Menu.Console,
-    Menu.Main,
   ];
 }
