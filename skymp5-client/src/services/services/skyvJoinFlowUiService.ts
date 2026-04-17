@@ -29,22 +29,16 @@ export class SkyvJoinFlowUiService extends ClientListener {
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.on("menuClose", (e) => this.onMenuClose(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
-    this.controller.once("update", () => this.onceUpdate());
+    this.controller.once("tick", () => this.bootstrapOnFirstTick());
 
     this.state = this.readState();
   }
 
-  private onceUpdate() {
+  private bootstrapOnFirstTick() {
     if (!this.isEnabled()) return;
     if (this.mainMenuOpen) return;
-
-    try {
-      if (this.sp.Ui.isMenuOpen(Menu.Main)) {
-        this.mainMenuOpen = true;
-        this.open();
-      }
-    } catch {
-    }
+    this.mainMenuOpen = true;
+    this.open();
   }
 
   private onMenuOpen(e: MenuOpenEvent) {
