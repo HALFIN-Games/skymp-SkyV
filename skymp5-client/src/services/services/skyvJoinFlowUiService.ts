@@ -6,6 +6,7 @@ import { authGameDataStorageKey } from "../../features/authModel";
 const events = {
   ackRules: 'skyvJoin_ackRules',
   authOpen: 'skyvJoin_authOpen',
+  rulesOpen: 'skyvJoin_rulesOpen',
   showCharacters: 'skyvJoin_showCharacters',
   selectCharacter: 'skyvJoin_selectCharacter',
   createCharacter: 'skyvJoin_createCharacter',
@@ -91,6 +92,11 @@ export class SkyvJoinFlowUiService extends ClientListener {
       return;
     }
 
+    if (key === events.rulesOpen) {
+      this.openRules();
+      return;
+    }
+
     if (key === events.showCharacters) {
       this.state.screen = this.hasJoinTicket() ? 'characters' : 'auth';
       this.state.selectedCharacterId = null;
@@ -159,6 +165,18 @@ export class SkyvJoinFlowUiService extends ClientListener {
     } else if (this.state.screen !== 'queue') {
       this.state.screen = 'characters';
     }
+
+    if (this.hasJoinTicket()) {
+      const gd = this.sp.storage[authGameDataStorageKey] as any;
+      const ticket = gd?.remote?.session;
+      if (typeof ticket === "string") {
+        const decoded = this.tryDecodeSlotsFromTicket(ticket);
+        if (typeof decoded === "number") {
+          this.state.maxSlots = decoded;
+        }
+      }
+    }
+
     this.writeState(this.state);
     this.render();
   }
@@ -166,6 +184,15 @@ export class SkyvJoinFlowUiService extends ClientListener {
   private openWebsiteJoin() {
     try {
       this.sp.browser.loadUrl("https://vokunrp.com/game/join");
+      this.sp.browser.setVisible(true);
+      this.sp.browser.setFocused(true);
+    } catch {
+    }
+  }
+
+  private openRules() {
+    try {
+      this.sp.browser.loadUrl("https://www.vokunrp.com/rules");
       this.sp.browser.setVisible(true);
       this.sp.browser.setFocused(true);
     } catch {
@@ -354,7 +381,11 @@ export class SkyvJoinFlowUiService extends ClientListener {
         const box = document.createElement('div');
         box.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
         box.appendChild(p('You must acknowledge the server rules once before creating your first character.'));
-        box.appendChild(p('Full rules: ' + model.rulesUrl));
+        const rulesLink = document.createElement('div');
+        rulesLink.textContent = 'Open rules: ' + model.rulesUrl;
+        rulesLink.style.cssText = 'color:' + theme.text + ';font-size:16px;font-weight:700;line-height:1.45;margin-top:6px;cursor:pointer;text-decoration:underline;';
+        rulesLink.onclick = () => send(${JSON.stringify(events.rulesOpen)});
+        box.appendChild(rulesLink);
         const actions = document.createElement('div');
         actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
         actions.appendChild(btn('I agree', () => send(${JSON.stringify(events.ackRules)})));
