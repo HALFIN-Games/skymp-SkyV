@@ -2,11 +2,16 @@ import { System, Log, Content, SystemContext } from "./system";
 import { Settings } from "../settings";
 import * as fetchRetry from "fetch-retry";
 import { loginsCounter, loginErrorsCounter } from "./metricsSystem";
+import { JoinTicketClaims, JoinTicketVerifier } from "../utils/joinTicket";
+import * as fs from "fs";
 
 const loginFailedNotInTheDiscordServer = JSON.stringify({ customPacketType: "loginFailedNotInTheDiscordServer" });
 const loginFailedBanned = JSON.stringify({ customPacketType: "loginFailedBanned" });
 const loginFailedIpMismatch = JSON.stringify({ customPacketType: "loginFailedIpMismatch" });
 const loginFailedSessionNotFound = JSON.stringify({ customPacketType: "loginFailedSessionNotFound" });
+const loginFailedInvalidTicket = JSON.stringify({ customPacketType: "loginFailedInvalidTicket" });
+const loginFailedTicketExpired = JSON.stringify({ customPacketType: "loginFailedTicketExpired" });
+const loginFailedNotWhitelisted = JSON.stringify({ customPacketType: "loginFailedNotWhitelisted" });
 
 type Mp = any; // TODO
 
@@ -72,6 +77,7 @@ export class Login implements System {
 
   async initAsync(ctx: SystemContext): Promise<void> {
     this.settingsObject = await Settings.get();
+    this.joinTicketVerifier = JoinTicketVerifier.fromEnvOrDefaultFile();
 
     this.log(
       `Login system assumed that ${this.masterKey} is our master api key`
@@ -104,7 +110,7 @@ export class Login implements System {
         this.emit(ctx, "userAssignSession", userId, gameData.session);
 
         const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
-        const profile = await this.getUserProfile(gameData.session, userId, ctx);
+        const profile = await this.getUserProfileOrTicket(gameData.session, userId, ctx);
         const guidAfterAsyncOp = ctx.svr.isConnected(userId) ? ctx.svr.getUserGuid(userId) : "<disconnected>";
 
         console.log({ guidBeforeAsyncOp, guidAfterAsyncOp, op: "getUserProfile" });
@@ -127,7 +133,9 @@ export class Login implements System {
 
         let roles = new Array<string>();
 
-        if (discordAuth && profile.discordId) {
+        if (profile.__skyvJoinTicket === true) {
+          roles = [];
+        } else if (discordAuth && profile.discordId) {
           const guidBeforeAsyncOp = ctx.svr.getUserGuid(userId);
           const response = await this.fetchRetry(
             `https://discord.com/api/guilds/${discordAuth.guildId}/members/${profile.discordId}`,
@@ -232,6 +240,96 @@ export class Login implements System {
       this.log("No credentials found in gameData:", gameData);
     }
   }
+
+  private async getUserProfileOrTicket(sessionOrTicket: string, userId: number, ctx: SystemContext): Promise<UserProfile & { __skyvJoinTicket?: true }> {
+    const isJwtLike = typeof sessionOrTicket === "string" && sessionOrTicket.split(".").length === 3;
+    if (!isJwtLike) {
+      return await this.getUserProfile(sessionOrTicket, userId, ctx);
+    }
+
+    const nowSeconds = Math.floor(Date.now() / 1000);
+    let claims: JoinTicketClaims;
+    try {
+      claims = this.joinTicketVerifier!.verify(sessionOrTicket, nowSeconds);
+    } catch (e: any) {
+      const msg = (e && typeof e.message === "string") ? e.message : "invalid";
+      if (msg.toLowerCase().includes("expired")) {
+        ctx.svr.sendCustomPacket(userId, loginFailedTicketExpired);
+      } else {
+        ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+      }
+      throw e;
+    }
+
+    if (this.isReplay(claims)) {
+      ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+      throw new Error("Replay jti");
+    }
+
+    if (!claims.whitelisted) {
+      ctx.svr.sendCustomPacket(userId, loginFailedNotWhitelisted);
+      throw new Error("Not whitelisted");
+    }
+
+    this.markUsed(claims);
+
+    const profileId = this.getOrCreateLocalProfileId(claims.sub);
+    return { id: profileId, discordId: claims.sub, __skyvJoinTicket: true };
+  }
+
+  private getOrCreateLocalProfileId(discordId: string) {
+    const dataDir = this.settingsObject?.dataDir ?? "./data";
+    const p = `${dataDir}/skyv-identity.json`;
+    let state: any = { nextId: 1, map: {} };
+    try {
+      if (fs.existsSync(p)) {
+        state = JSON.parse(fs.readFileSync(p, "utf8"));
+      }
+    } catch {
+    }
+    if (!state.map) state.map = {};
+    if (typeof state.nextId !== "number") state.nextId = 1;
+
+    const existing = state.map[discordId];
+    if (typeof existing === "number") return existing;
+
+    const id = state.nextId;
+    state.nextId = id + 1;
+    state.map[discordId] = id;
+    try {
+      fs.mkdirSync(dataDir, { recursive: true });
+      fs.writeFileSync(p, JSON.stringify(state, null, 2));
+    } catch {
+    }
+    return id;
+  }
+
+  private isReplay(claims: JoinTicketClaims) {
+    this.pruneReplayCache();
+    const expMs = (claims.exp ?? 0) * 1000;
+    const existing = this.usedJtis.get(claims.jti);
+    if (existing && existing >= Date.now()) return true;
+    if (expMs <= Date.now()) return true;
+    return false;
+  }
+
+  private markUsed(claims: JoinTicketClaims) {
+    const expMs = (claims.exp ?? 0) * 1000;
+    this.usedJtis.set(claims.jti, expMs);
+  }
+
+  private pruneReplayCache() {
+    const now = Date.now();
+    if (now - this.lastReplayPruneAt < 10_000) return;
+    this.lastReplayPruneAt = now;
+    for (const [k, v] of this.usedJtis.entries()) {
+      if (v <= now) this.usedJtis.delete(k);
+    }
+  }
+
+  private joinTicketVerifier: JoinTicketVerifier | null = null;
+  private usedJtis = new Map<string, number>();
+  private lastReplayPruneAt = 0;
 
   private postServerLoginToDiscord(eventLogChannelId: string, botToken: string, options: { userId: number, ipToPrint: string, actorIds: string[], profile: UserProfile }) {
     const { userId, ipToPrint, actorIds, profile } = options;
