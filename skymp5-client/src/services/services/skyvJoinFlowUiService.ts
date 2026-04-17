@@ -15,6 +15,7 @@ const events = {
 } as const;
 
 const joinTicketEventKey = "skyvJoin_ticket";
+const diskJoinTicketPluginName = "skyv-join-ticket-no-load";
 
 type Screen = 'rules' | 'auth' | 'characters' | 'queue';
 
@@ -33,8 +34,36 @@ export class SkyvJoinFlowUiService extends ClientListener {
     this.controller.on("menuClose", (e) => this.onMenuClose(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.once("tick", () => this.bootstrapOnFirstTick());
+    this.controller.once("tick", () => this.tryApplyJoinTicketFromDisk());
 
     this.state = this.readState();
+  }
+
+  private tryApplyJoinTicketFromDisk() {
+    try {
+      const raw = (this.sp as any).getPluginSourceCode(diskJoinTicketPluginName, "PluginsNoLoad") as string | undefined;
+      if (!raw) return;
+      const json = raw.startsWith("//") ? raw.slice(2) : raw;
+      const obj = JSON.parse(json) as any;
+      const ticket = obj?.ticket;
+      if (typeof ticket !== "string" || ticket.length < 20) return;
+
+      this.storeJoinTicket(ticket);
+      const decoded = this.tryDecodeSlotsFromTicket(ticket);
+      if (typeof decoded === "number") {
+        this.state.maxSlots = decoded;
+      }
+      this.state.screen = 'characters';
+      this.writeState(this.state);
+      this.hideBrowser();
+      this.render();
+    } catch {
+    } finally {
+      try {
+        (this.sp as any).writePlugin(diskJoinTicketPluginName, "//null", "PluginsNoLoad");
+      } catch {
+      }
+    }
   }
 
   private bootstrapOnFirstTick() {
