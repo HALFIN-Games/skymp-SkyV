@@ -42,7 +42,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       if (!raw) return;
       const json = raw.startsWith("//") ? raw.slice(2) : raw;
       const obj = JSON.parse(json) as any;
-      const ticket = obj?.ticket;
+      const ticket = obj?.ticket ?? obj?.Ticket;
       if (typeof ticket !== "string" || ticket.length < 20) return;
 
       this.storeJoinTicket(ticket);
