@@ -4,9 +4,6 @@ import { logTrace } from "../../logging";
 import { authGameDataStorageKey } from "../../features/authModel";
 
 const events = {
-  ackRules: 'skyvJoin_ackRules',
-  authOpen: 'skyvJoin_authOpen',
-  rulesOpen: 'skyvJoin_rulesOpen',
   showCharacters: 'skyvJoin_showCharacters',
   selectCharacter: 'skyvJoin_selectCharacter',
   createCharacter: 'skyvJoin_createCharacter',
@@ -17,7 +14,7 @@ const events = {
 const joinTicketEventKey = "skyvJoin_ticket";
 const diskJoinTicketPluginName = "skyv-join-ticket-no-load";
 
-type Screen = 'rules' | 'auth' | 'characters' | 'queue';
+type Screen = 'characters' | 'queue';
 
 type JoinState = {
   hasAcknowledgedRules: boolean;
@@ -108,26 +105,8 @@ export class SkyvJoinFlowUiService extends ClientListener {
       return;
     }
 
-    if (key === events.ackRules) {
-      this.state.hasAcknowledgedRules = true;
-      this.state.screen = this.hasJoinTicket() ? 'characters' : 'auth';
-      this.writeState(this.state);
-      this.render();
-      return;
-    }
-
-    if (key === events.authOpen) {
-      this.openWebsiteJoin();
-      return;
-    }
-
-    if (key === events.rulesOpen) {
-      this.openRules();
-      return;
-    }
-
     if (key === events.showCharacters) {
-      this.state.screen = this.hasJoinTicket() ? 'characters' : 'auth';
+      this.state.screen = 'characters';
       this.state.selectedCharacterId = null;
       this.writeState(this.state);
       this.render();
@@ -138,10 +117,9 @@ export class SkyvJoinFlowUiService extends ClientListener {
       const characterId = e.arguments?.[1];
       this.state.selectedCharacterId = typeof characterId === 'string' ? characterId : null;
       if (!this.hasJoinTicket()) {
-        this.state.screen = 'auth';
+        this.state.screen = 'characters';
         this.writeState(this.state);
         this.render();
-        this.openWebsiteJoin();
       } else {
         this.state.screen = 'queue';
         this.writeState(this.state);
@@ -154,10 +132,9 @@ export class SkyvJoinFlowUiService extends ClientListener {
     if (key === events.createCharacter) {
       this.state.selectedCharacterId = null;
       if (!this.hasJoinTicket()) {
-        this.state.screen = 'auth';
+        this.state.screen = 'characters';
         this.writeState(this.state);
         this.render();
-        this.openWebsiteJoin();
       } else {
         this.state.screen = 'queue';
         this.writeState(this.state);
@@ -187,11 +164,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
     this.sp.browser.setVisible(true);
     this.sp.browser.setFocused(true);
 
-    if (!this.state.hasAcknowledgedRules) {
-      this.state.screen = 'rules';
-    } else if (!this.hasJoinTicket()) {
-      this.state.screen = 'auth';
-    } else if (this.state.screen !== 'queue') {
+    if (this.state.screen !== 'queue') {
       this.state.screen = 'characters';
     }
 
@@ -208,24 +181,6 @@ export class SkyvJoinFlowUiService extends ClientListener {
 
     this.writeState(this.state);
     this.render();
-  }
-
-  private openWebsiteJoin() {
-    try {
-      this.sp.browser.loadUrl("https://vokunrp.com/game/join");
-      this.sp.browser.setVisible(true);
-      this.sp.browser.setFocused(true);
-    } catch {
-    }
-  }
-
-  private openRules() {
-    try {
-      this.sp.browser.loadUrl("https://www.vokunrp.com/rules");
-      this.sp.browser.setVisible(true);
-      this.sp.browser.setFocused(true);
-    } catch {
-    }
   }
 
   private storeJoinTicket(ticket: string) {
@@ -305,7 +260,6 @@ export class SkyvJoinFlowUiService extends ClientListener {
       ...state,
       maxSlots: state.maxSlots,
       serverName: 'Vokun Roleplay',
-      rulesUrl: 'https://www.vokunrp.com/rules',
       isAuthed: this.hasJoinTicket(),
     };
 
@@ -357,7 +311,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       title.style.cssText = 'font-size:32px;font-weight:800;letter-spacing:0.4px;';
 
       const subtitle = document.createElement('div');
-      subtitle.textContent = model.screen === 'rules' ? 'Rules acknowledgement' : model.screen === 'auth' ? 'Sign in' : model.screen === 'queue' ? 'Queue' : 'Character selection';
+      subtitle.textContent = model.screen === 'queue' ? 'Queue' : 'Character selection';
       subtitle.style.cssText = 'font-size:16px;font-weight:700;color:' + theme.muted + ';margin-top:6px;';
 
       titleWrap.appendChild(title);
@@ -406,40 +360,19 @@ export class SkyvJoinFlowUiService extends ClientListener {
         return el;
       };
 
-      if (model.screen === 'rules') {
-        const box = document.createElement('div');
-        box.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
-        box.appendChild(p('You must acknowledge the server rules once before creating your first character.'));
-        const rulesLink = document.createElement('div');
-        rulesLink.textContent = 'Open rules: ' + model.rulesUrl;
-        rulesLink.style.cssText = 'color:' + theme.text + ';font-size:16px;font-weight:700;line-height:1.45;margin-top:6px;cursor:pointer;text-decoration:underline;';
-        rulesLink.onclick = () => send(${JSON.stringify(events.rulesOpen)});
-        box.appendChild(rulesLink);
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
-        actions.appendChild(btn('I agree', () => send(${JSON.stringify(events.ackRules)})));
-        box.appendChild(actions);
-        body.appendChild(box);
-      }
-
-      if (model.screen === 'auth') {
-        const box = document.createElement('div');
-        box.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
-        box.appendChild(p('Sign in to continue (Discord).'));
-        box.appendChild(p('A website window will open to obtain a short-lived join ticket.'));
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
-        actions.appendChild(btn('Open sign-in', () => send(${JSON.stringify(events.authOpen)})));
-        if (model.isAuthed) {
-          actions.appendChild(btn('Continue', () => send(${JSON.stringify(events.showCharacters)})));
-        }
-        box.appendChild(actions);
-        body.appendChild(box);
-      }
-
       if (model.screen === 'characters') {
         const box = document.createElement('div');
         box.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
+        if (!model.isAuthed) {
+          box.appendChild(p('No launcher join ticket detected.'));
+          box.appendChild(p('Close Skyrim and click Join Server on the website so the launcher can pass a ticket.'));
+          body.appendChild(box);
+          panel.appendChild(header);
+          panel.appendChild(body);
+          root.appendChild(panel);
+          return;
+        }
+
         box.appendChild(p('Slots available: ' + model.maxSlots));
         box.appendChild(p('Choose a character to join.'));
 
@@ -515,18 +448,18 @@ export class SkyvJoinFlowUiService extends ClientListener {
   private readState(): JoinState {
     const raw = storage[this.storageKey] as string | undefined;
     if (!raw) {
-      return { hasAcknowledgedRules: false, selectedCharacterId: null, screen: 'rules', maxSlots: 5 };
+      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5 };
     }
     try {
       const parsed = JSON.parse(raw) as Partial<JoinState>;
       return {
         hasAcknowledgedRules: Boolean(parsed.hasAcknowledgedRules),
         selectedCharacterId: typeof parsed.selectedCharacterId === 'string' ? parsed.selectedCharacterId : null,
-        screen: parsed.screen === 'characters' || parsed.screen === 'queue' || parsed.screen === 'rules' || parsed.screen === 'auth' ? parsed.screen : 'rules',
+        screen: parsed.screen === 'characters' || parsed.screen === 'queue' ? parsed.screen : 'characters',
         maxSlots: typeof parsed.maxSlots === 'number' && Number.isFinite(parsed.maxSlots) ? Math.max(1, Math.min(50, Math.floor(parsed.maxSlots))) : 5,
       };
     } catch {
-      return { hasAcknowledgedRules: false, selectedCharacterId: null, screen: 'rules', maxSlots: 5 };
+      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5 };
     }
   }
 
