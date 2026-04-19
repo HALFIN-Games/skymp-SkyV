@@ -201,7 +201,7 @@ const main = async () => {
     new MasterApiBalanceSystem(log, maxPlayers, master, port, masterKey, offlineMode),
     new QueueHeartbeatSystem(log, maxPlayers),
   );
-  if ((process.env.VOICE_ENABLED ?? "").toLowerCase() === "true") {
+  if ((process.env.VOICE_ENABLED ?? "").toLowerCase() !== "false") {
     systems.push(new VoiceAdapterSystem(log));
   }
 

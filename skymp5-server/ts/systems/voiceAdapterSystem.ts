@@ -72,13 +72,18 @@ export class VoiceAdapterSystem implements System {
     } catch (e: any) {
       const status = e?.response?.status;
       const msg = e?.message ?? "error";
-      this.log(`[voice-adapter] evaluate failed status=${status ?? "n/a"} msg=${msg}`);
+      if (now - this.lastFailLogAt >= this.failLogIntervalMs) {
+        this.lastFailLogAt = now;
+        this.log(`[voice-adapter] evaluate failed status=${status ?? "n/a"} msg=${msg}`);
+      }
     }
   }
 
   private connectedUserIds = new Set<number>();
   private lastEvalAt = 0;
-  private evalIntervalMs = Math.max(100, Number(process.env.VOICE_EVAL_INTERVAL_MS ?? "1000") || 1000);
+  private evalIntervalMs = Math.max(100, Number(process.env.VOICE_EVAL_INTERVAL_MS ?? "5000") || 5000);
+  private lastFailLogAt = 0;
+  private failLogIntervalMs = Math.max(1000, Number(process.env.VOICE_EVAL_FAIL_LOG_INTERVAL_MS ?? "30000") || 30000);
   private voiceUrl = (process.env.SKYV_VOIP_URL ?? "http://127.0.0.1:35810").replace(/\/+$/, "");
   private evalKey = (process.env.SKYV_VOIP_EVAL_KEY ?? "").trim();
   private serverId = process.env.SKYV_SERVER_ID ?? "vokun-main";
