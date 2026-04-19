@@ -1,5 +1,6 @@
 import { Settings } from "../settings";
 import { System, Log, SystemContext } from "./system";
+import axios from "axios";
 
 type Mp = any; // TODO
 
@@ -37,7 +38,8 @@ export class Spawn implements System {
 
   async initAsync(ctx: SystemContext): Promise<void> {
     const settingsObject = await Settings.get();
-    const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string) => {
+    const identityUrl = process.env.SKYV_IDENTITY_URL ?? "http://127.0.0.1:35800";
+    const listenerFn = (userId: number, userProfileId: number, discordRoleIds: string[], discordId?: string, skyvCharacterId?: string | null, skyvSlots?: number | null) => {
       const { startPoints } = settingsObject;
       // TODO: Show race menu if character is not created after relogging
       let actorId = ctx.svr.getActorsByProfileId(userProfileId)[0];
@@ -73,6 +75,12 @@ export class Spawn implements System {
         const forms = mp.findFormsByPropertyValue("private.indexed.discordId", discordId) as number[];
         console.log(`Found forms ${forms}`);
       }
+
+      if (discordId && skyvCharacterId) {
+        const slots = typeof skyvSlots === "number" && Number.isFinite(skyvSlots) ? Math.max(1, Math.min(50, Math.floor(skyvSlots))) : 1;
+        this.syncCharacterName(identityUrl, discordId, slots, skyvCharacterId, ctx.svr.getActorName(actorId));
+        this.scheduleNameSync(identityUrl, discordId, slots, skyvCharacterId, ctx, actorId);
+      }
     };
     ctx.gm.on("spawnAllowed", listenerFn);
     (ctx.svr as any)._onSpawnAllowed = listenerFn;
@@ -84,4 +92,35 @@ export class Spawn implements System {
       ctx.svr.setEnabled(actorId, false);
     }
   }
+
+  private syncCharacterName(identityUrl: string, discordId: string, slots: number, characterId: string, name: string) {
+    const cleaned = (name ?? "").trim();
+    if (!cleaned) return;
+    if (cleaned.toLowerCase() === "prisoner") return;
+    axios.post(
+      `${identityUrl}/v1/characters/set_name`,
+      { discord_id: discordId, slots, character_id: characterId, name: cleaned },
+      { timeout: 1500 },
+    ).catch(() => { });
+  }
+
+  private scheduleNameSync(identityUrl: string, discordId: string, slots: number, characterId: string, ctx: SystemContext, actorId: number) {
+    if (this.nameSyncTimers.has(actorId)) return;
+    const timer = setInterval(() => {
+      try {
+        const name = ctx.svr.getActorName(actorId);
+        const cleaned = (name ?? "").trim();
+        if (!cleaned || cleaned.toLowerCase() === "prisoner") return;
+        this.syncCharacterName(identityUrl, discordId, slots, characterId, cleaned);
+        clearInterval(timer);
+        this.nameSyncTimers.delete(actorId);
+      } catch {
+        clearInterval(timer);
+        this.nameSyncTimers.delete(actorId);
+      }
+    }, 2000);
+    this.nameSyncTimers.set(actorId, timer);
+  }
+
+  private nameSyncTimers = new Map<number, any>();
 }

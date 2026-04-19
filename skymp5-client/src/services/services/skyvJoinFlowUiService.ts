@@ -145,7 +145,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
         this.state.error = null;
         this.writeState(this.state);
         this.render();
-        this.controller.emitter.emit("skyvJoinConnect", { characterId: this.state.selectedCharacterId });
+        this.controller.emitter.emit("skyvJoinConnect", { characterId: this.state.selectedCharacterId, slotIndex: null });
       }
       return;
     }
@@ -153,7 +153,6 @@ export class SkyvJoinFlowUiService extends ClientListener {
     if (key === events.createCharacter) {
       const payload = e.arguments?.[1] as any;
       const slotIndex = typeof payload?.slotIndex === "number" ? Math.floor(payload.slotIndex) : -1;
-      const name = typeof payload?.name === "string" ? payload.name : "";
 
       if (!this.hasJoinTicket()) {
         this.state.screen = 'characters';
@@ -171,15 +170,6 @@ export class SkyvJoinFlowUiService extends ClientListener {
         return;
       }
 
-      const cleaned = name.trim();
-      if (cleaned.length < 1 || cleaned.length > 50) {
-        this.state.screen = 'characters';
-        this.state.error = "Name must be 1–50 characters.";
-        this.writeState(this.state);
-        this.render();
-        return;
-      }
-
       this.state.selectedCharacterId = null;
       if (!this.hasJoinTicket()) {
         this.state.screen = 'characters';
@@ -191,7 +181,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
         this.state.error = null;
         this.writeState(this.state);
         this.render();
-        this.controller.emitter.emit("skyvJoinCreateCharacter", { slotIndex, name: cleaned });
+        this.controller.emitter.emit("skyvJoinConnect", { characterId: null, slotIndex });
       }
       return;
     }
@@ -231,6 +221,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
         }
       }
       storage["skyvJoinAllowConnect"] = "true";
+      this.controller.emitter.emit("skyvJoinPreconnect", {});
     }
 
     this.writeState(this.state);
@@ -509,11 +500,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
           if (slot.characterId) {
             action = btn('Play', () => send(${JSON.stringify(events.selectCharacter)}, slot.characterId));
           } else {
-            action = btn('Create', () => {
-              const n = window.prompt('Character name (1–50 chars):', '');
-              if (!n) return;
-              send(${JSON.stringify(events.createCharacter)}, { slotIndex: i, name: String(n) });
-            });
+            action = btn('Create', () => send(${JSON.stringify(events.createCharacter)}, { slotIndex: i }));
           }
           card.appendChild(label);
           card.appendChild(action);

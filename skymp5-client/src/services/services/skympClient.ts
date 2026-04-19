@@ -45,6 +45,11 @@ export class SkympClient extends ClientListener {
       this.controller.emitter.on("authAttempt", (e) => this.onAuthAttempt(e));
     }
 
+    this.controller.emitter.on("skyvJoinPreconnect", () => {
+      storage.skyvJoinAllowConnect = true;
+      this.controller.once("tick", () => this.establishConnectionConditional());
+    });
+
     this.controller.emitter.on("skyvJoinConnect", () => {
       storage.skyvJoinAllowConnect = true;
       this.controller.once("tick", () => this.establishConnectionConditional());

@@ -133,44 +133,6 @@ export class Login implements System {
       return;
     }
 
-    if (type === "skyvCreateCharacter") {
-      const gameData = content["gameData"];
-      const session = gameData?.session;
-      const slotIndex = gameData?.slotIndex;
-      const name = gameData?.name;
-      if (typeof session !== "string" || session.length < 20) return;
-      if (typeof slotIndex !== "number" || !Number.isFinite(slotIndex)) return;
-      if (typeof name !== "string") return;
-
-      (async () => {
-        const nowSeconds = Math.floor(Date.now() / 1000);
-        let claims: JoinTicketClaims;
-        try {
-          claims = this.joinTicketVerifier!.verify(session, nowSeconds);
-        } catch {
-          ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
-          return;
-        }
-        if (!claims.whitelisted) {
-          ctx.svr.sendCustomPacket(userId, loginFailedNotWhitelisted);
-          return;
-        }
-
-        const created = await this.createCharacter(claims.sub, claims.slots, Math.floor(slotIndex), name);
-        const payload = JSON.stringify({
-          customPacketType: "skyvCreateCharacterResult",
-          slotIndex: Math.floor(slotIndex),
-          characterId: created.character_id,
-          name: created.name,
-        });
-        ctx.svr.sendCustomPacket(userId, payload);
-      })().catch((e) => {
-        const msg = (e && typeof e.message === "string") ? e.message : "error";
-        ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: "skyvCreateCharacterError", error: msg }));
-      });
-      return;
-    }
-
     if (type !== "loginWithSkympIo") return;
 
     const ip = ctx.svr.getUserIp(userId);
@@ -198,21 +160,46 @@ export class Login implements System {
 
         console.log("getUserProfileId:", profile);
 
+        let skyvCharacterId: string | null = null;
+        let skyvSlots: number | null = null;
         if (profile.__skyvJoinTicket === true) {
-          const characterId = gameData.characterId;
-          if (typeof characterId !== "string" || characterId.length < 3) {
-            ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
-            throw new Error("Missing characterId");
-          }
+          skyvSlots = profile.__skyvSlots ?? 1;
           const acc = await this.resolveAccount(profile.discordId!, profile.__skyvSlots ?? 1);
-          const match = (acc.characters ?? []).find((c: any) => c.character_id === characterId);
-          if (!match || typeof match.slot !== "number") {
+
+          const reqCharacterId = gameData.characterId;
+          const reqSlotIndex = gameData.slotIndex;
+
+          let slotNum: number | null = null;
+
+          if (typeof reqCharacterId === "string" && reqCharacterId.length >= 3) {
+            const match = (acc.characters ?? []).find((c: any) => c.character_id === reqCharacterId);
+            if (!match || typeof match.slot !== "number") {
+              ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+              throw new Error("Invalid characterId");
+            }
+            skyvCharacterId = reqCharacterId;
+            slotNum = Math.floor(match.slot);
+          } else if (typeof reqSlotIndex === "number" && Number.isFinite(reqSlotIndex)) {
+            const slotIndexNum = Math.floor(reqSlotIndex);
+            if (slotIndexNum < 0 || slotIndexNum >= (profile.__skyvSlots ?? 1)) {
+              ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+              throw new Error("Invalid slotIndex");
+            }
+            const existing = (acc.characters ?? []).find((c: any) => typeof c.slot === "number" && Math.floor(c.slot) === (slotIndexNum + 1));
+            if (existing && typeof existing.character_id === "string" && existing.character_id.length >= 3) {
+              skyvCharacterId = existing.character_id;
+            } else {
+              const created = await this.createCharacter(profile.discordId!, profile.__skyvSlots ?? 1, slotIndexNum, "");
+              skyvCharacterId = created.character_id;
+            }
+            slotNum = slotIndexNum + 1;
+          } else {
             ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
-            throw new Error("Invalid characterId");
+            throw new Error("Missing character selection");
           }
-          const slotNum = Math.floor(match.slot);
-          profile.id = this.computeCharacterProfileId(acc.profile_id, slotNum);
-          this.touchCharacter(profile.discordId!, profile.__skyvSlots ?? 1, characterId).catch(() => { });
+
+          profile.id = this.computeCharacterProfileId(acc.profile_id, slotNum!);
+          this.touchCharacter(profile.discordId!, profile.__skyvSlots ?? 1, skyvCharacterId!).catch(() => { });
         }
 
         if (discordAuth && !discordAuth.botToken) {
@@ -316,7 +303,7 @@ export class Login implements System {
           });
         }
 
-        this.emit(ctx, "spawnAllowed", userId, profile.id, roles, profile.discordId);
+        this.emit(ctx, "spawnAllowed", userId, profile.id, roles, profile.discordId, skyvCharacterId, skyvSlots);
         loginsCounter.inc();
         this.log("Logged as " + profile.id);
       })()
