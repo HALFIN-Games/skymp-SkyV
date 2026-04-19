@@ -52,8 +52,11 @@ export class SkyvJoinFlowUiService extends ClientListener {
       }
       this.state.screen = 'characters';
       this.writeState(this.state);
-      this.hideBrowser();
-      this.render();
+      if (this.isEnabled() && this.mainMenuOpen) {
+        this.open();
+      } else {
+        this.render();
+      }
     } catch {
     } finally {
       try {
