@@ -95,9 +95,83 @@ export class Login implements System {
     content: Content,
     ctx: SystemContext,
   ): void {
-    if (type !== "loginWithSkympIo") {
+    if (type === "skyvCharactersListRequest") {
+      const gameData = content["gameData"];
+      const session = gameData?.session;
+      if (typeof session !== "string" || session.length < 20) return;
+      (async () => {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        let claims: JoinTicketClaims;
+        try {
+          claims = this.joinTicketVerifier!.verify(session, nowSeconds);
+        } catch {
+          ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+          return;
+        }
+        if (!claims.whitelisted) {
+          ctx.svr.sendCustomPacket(userId, loginFailedNotWhitelisted);
+          return;
+        }
+
+        const acc = await this.resolveAccount(claims.sub, claims.slots);
+        const payload = JSON.stringify({
+          customPacketType: "skyvCharactersList",
+          profileId: acc.profile_id,
+          maxSlots: acc.slots,
+          slots: (acc.characters ?? []).map((c: any, idx: number) => ({
+            slotIndex: (typeof c.slot === "number" ? c.slot - 1 : idx),
+            characterId: c.character_id ?? null,
+            name: c.name ?? null,
+            createdAtUtc: typeof c.created_at === "number" ? new Date(c.created_at).toISOString() : null,
+            lastPlayedAtUtc: typeof c.last_played_at === "number" ? new Date(c.last_played_at).toISOString() : null,
+          })),
+        });
+        ctx.svr.sendCustomPacket(userId, payload);
+      })().catch((e) => {
+        console.error("skyvCharactersListRequest failed:", e);
+      });
       return;
     }
+
+    if (type === "skyvCreateCharacter") {
+      const gameData = content["gameData"];
+      const session = gameData?.session;
+      const slotIndex = gameData?.slotIndex;
+      const name = gameData?.name;
+      if (typeof session !== "string" || session.length < 20) return;
+      if (typeof slotIndex !== "number" || !Number.isFinite(slotIndex)) return;
+      if (typeof name !== "string") return;
+
+      (async () => {
+        const nowSeconds = Math.floor(Date.now() / 1000);
+        let claims: JoinTicketClaims;
+        try {
+          claims = this.joinTicketVerifier!.verify(session, nowSeconds);
+        } catch {
+          ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+          return;
+        }
+        if (!claims.whitelisted) {
+          ctx.svr.sendCustomPacket(userId, loginFailedNotWhitelisted);
+          return;
+        }
+
+        const created = await this.createCharacter(claims.sub, claims.slots, Math.floor(slotIndex), name);
+        const payload = JSON.stringify({
+          customPacketType: "skyvCreateCharacterResult",
+          slotIndex: Math.floor(slotIndex),
+          characterId: created.character_id,
+          name: created.name,
+        });
+        ctx.svr.sendCustomPacket(userId, payload);
+      })().catch((e) => {
+        const msg = (e && typeof e.message === "string") ? e.message : "error";
+        ctx.svr.sendCustomPacket(userId, JSON.stringify({ customPacketType: "skyvCreateCharacterError", error: msg }));
+      });
+      return;
+    }
+
+    if (type !== "loginWithSkympIo") return;
 
     const ip = ctx.svr.getUserIp(userId);
     console.log(`Connecting a user ${userId} with ip ${ip}`);
@@ -123,6 +197,23 @@ export class Login implements System {
         }
 
         console.log("getUserProfileId:", profile);
+
+        if (profile.__skyvJoinTicket === true) {
+          const characterId = gameData.characterId;
+          if (typeof characterId !== "string" || characterId.length < 3) {
+            ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+            throw new Error("Missing characterId");
+          }
+          const acc = await this.resolveAccount(profile.discordId!, profile.__skyvSlots ?? 1);
+          const match = (acc.characters ?? []).find((c: any) => c.character_id === characterId);
+          if (!match || typeof match.slot !== "number") {
+            ctx.svr.sendCustomPacket(userId, loginFailedInvalidTicket);
+            throw new Error("Invalid characterId");
+          }
+          const slotNum = Math.floor(match.slot);
+          profile.id = this.computeCharacterProfileId(acc.profile_id, slotNum);
+          this.touchCharacter(profile.discordId!, profile.__skyvSlots ?? 1, characterId).catch(() => { });
+        }
 
         if (discordAuth && !discordAuth.botToken) {
           discordAuth = undefined;
@@ -243,7 +334,7 @@ export class Login implements System {
     }
   }
 
-  private async getUserProfileOrTicket(sessionOrTicket: string, userId: number, ctx: SystemContext): Promise<UserProfile & { __skyvJoinTicket?: true }> {
+  private async getUserProfileOrTicket(sessionOrTicket: string, userId: number, ctx: SystemContext): Promise<UserProfile & { __skyvJoinTicket?: true, __skyvSlots?: number }> {
     const isJwtLike = typeof sessionOrTicket === "string" && sessionOrTicket.split(".").length === 3;
     if (!isJwtLike) {
       return await this.getUserProfile(sessionOrTicket, userId, ctx);
@@ -276,7 +367,7 @@ export class Login implements System {
     this.markUsed(claims);
 
     const profileId = await this.resolveProfileId(claims.sub, claims.slots);
-    return { id: profileId, discordId: claims.sub, __skyvJoinTicket: true };
+    return { id: profileId, discordId: claims.sub, __skyvJoinTicket: true, __skyvSlots: claims.slots };
   }
 
   private async resolveProfileId(discordId: string, slots: number) {
@@ -295,6 +386,38 @@ export class Login implements System {
       this.log(`SkyV-Identity unavailable; falling back to local mapping (${(e as any)?.message ?? "error"})`);
       return this.getOrCreateLocalProfileId(discordId);
     }
+  }
+
+  private async resolveAccount(discordId: string, slots: number) {
+    const res = await axios.post(
+      `${this.identityUrl}/v1/characters/list`,
+      { discord_id: discordId, slots },
+      { timeout: 1500 },
+    );
+    return res.data as any;
+  }
+
+  private async createCharacter(discordId: string, slots: number, slotIndex: number, name: string) {
+    const res = await axios.post(
+      `${this.identityUrl}/v1/characters/create`,
+      { discord_id: discordId, slots, slot_index: slotIndex, name },
+      { timeout: 1500 },
+    );
+    return res.data as any;
+  }
+
+  private async touchCharacter(discordId: string, slots: number, characterId: string) {
+    await axios.post(
+      `${this.identityUrl}/v1/characters/touch`,
+      { discord_id: discordId, slots, character_id: characterId },
+      { timeout: 1500 },
+    );
+  }
+
+  private computeCharacterProfileId(baseProfileId: number, slotNum: number) {
+    const s = Math.max(1, Math.min(50, Math.floor(slotNum)));
+    if (s === 1) return baseProfileId;
+    return baseProfileId * 1000 + s;
   }
 
   private getOrCreateLocalProfileId(discordId: string) {

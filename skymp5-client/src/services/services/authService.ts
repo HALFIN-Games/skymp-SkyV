@@ -49,9 +49,29 @@ export class AuthService extends ClientListener {
     this.controller.emitter.on("connectionAccepted", () => this.handleConnectionAccepted());
     this.controller.emitter.on("connectionDenied", (e) => this.handleConnectionDenied(e));
     this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("skyvJoinConnect", (e) => this.onSkyvJoinConnect(e));
+    this.controller.emitter.on("skyvJoinCreateCharacter", (e) => this.onSkyvJoinCreateCharacter(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
     this.controller.on("tick", () => this.onTick());
     this.controller.once("update", () => this.onceUpdate());
+  }
+
+  private isSkyvJoinUiEnabled() {
+    const cfg = this.sp.settings["skymp5-client"]["skyv-join-ui"];
+    if (typeof cfg === "boolean") return cfg;
+    return true;
+  }
+
+  private onSkyvJoinConnect(e: { characterId: string | null }) {
+    this.pendingCharacterId = typeof e.characterId === "string" ? e.characterId : null;
+    this.pendingCreate = null;
+    this.trySendSkyvJoinLogin();
+  }
+
+  private onSkyvJoinCreateCharacter(e: { slotIndex: number; name: string }) {
+    this.pendingCreate = { slotIndex: Math.floor(e.slotIndex), name: e.name };
+    this.pendingCharacterId = null;
+    this.trySendSkyvCreateCharacter();
   }
 
   private onAuthNeeded(e: AuthNeededEvent) {
@@ -158,6 +178,21 @@ export class AuthService extends ClientListener {
         this.loggingStartMoment = 0;
         this.sp.browser.executeJavaScript(new FunctionInfo(this.loginFailedWidgetSetter).getText({ events, browserState, authData: authData }));
         break;
+      case 'skyvCreateCharacterResult': {
+        this.skyvCreateInFlight = false;
+        const characterId = msgContent["characterId"];
+        if (typeof characterId === "string" && characterId.length > 2) {
+          this.pendingCharacterId = characterId;
+          this.pendingCreate = null;
+          this.trySendSkyvJoinLogin();
+        }
+        break;
+      }
+      case 'skyvCreateCharacterError': {
+        this.skyvCreateInFlight = false;
+        this.pendingCreate = null;
+        break;
+      }
     }
   }
 
@@ -558,6 +593,22 @@ export class AuthService extends ClientListener {
       return;
     }
 
+    if (authData?.remote && this.isSkyvJoinUiEnabled()) {
+      if (this.pendingCreate) {
+        this.loggingStartMoment = 0;
+        this.trySendSkyvCreateCharacter();
+        return;
+      }
+      if (this.pendingCharacterId) {
+        this.trySendSkyvJoinLogin();
+        return;
+      }
+
+      this.loggingStartMoment = 0;
+      this.tryRequestSkyvCharacters();
+      return;
+    }
+
     if (authData?.remote) {
       logTrace(this, 'Logging in as a master API user');
       const message: CustomPacketMessage = {
@@ -578,6 +629,66 @@ export class AuthService extends ClientListener {
 
     logError(this, 'Not found authentication method');
   };
+
+  private tryRequestSkyvCharacters() {
+    if (!this.isSkyvJoinUiEnabled()) return;
+    const authData = this.sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
+    if (!authData?.remote?.session) return;
+    if (this.skyvListRequested) return;
+    this.skyvListRequested = true;
+    const message: CustomPacketMessage = {
+      t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({
+        customPacketType: "skyvCharactersListRequest",
+        gameData: { session: authData.remote.session },
+      }),
+    };
+    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+  }
+
+  private trySendSkyvCreateCharacter() {
+    if (!this.isSkyvJoinUiEnabled()) return;
+    const authData = this.sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
+    if (!authData?.remote?.session) return;
+    if (!this.pendingCreate) return;
+    if (this.skyvCreateInFlight) return;
+    this.skyvCreateInFlight = true;
+    const message: CustomPacketMessage = {
+      t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({
+        customPacketType: "skyvCreateCharacter",
+        gameData: {
+          session: authData.remote.session,
+          slotIndex: this.pendingCreate.slotIndex,
+          name: this.pendingCreate.name,
+        },
+      }),
+    };
+    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+  }
+
+  private trySendSkyvJoinLogin() {
+    if (!this.isSkyvJoinUiEnabled()) return;
+    const authData = this.sp.storage[authGameDataStorageKey] as AuthGameData | undefined;
+    if (!authData?.remote?.session) return;
+    if (!this.pendingCharacterId) return;
+    const message: CustomPacketMessage = {
+      t: MsgType.CustomPacket,
+      contentJsonDump: JSON.stringify({
+        customPacketType: 'loginWithSkympIo',
+        gameData: {
+          session: authData.remote.session,
+          characterId: this.pendingCharacterId,
+        },
+      }),
+    };
+    this.controller.emitter.emit("sendMessage", { message, reliability: "reliable" });
+  }
+
+  private skyvListRequested = false;
+  private skyvCreateInFlight = false;
+  private pendingCharacterId: string | null = null;
+  private pendingCreate: { slotIndex: number; name: string } | null = null;
 
   private onTick() {
     // TODO: Should be no hardcoded/magic-number limit

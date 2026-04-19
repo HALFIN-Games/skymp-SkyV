@@ -90,7 +90,8 @@ type EventTypes = {
     'nicknameDestroy': [NicknameDestroyEvent],
 
     'skyvJoinConnect': [{ characterId: string | null }],
-    'skyvJoinCancel': [{}]
+    'skyvJoinCancel': [{}],
+    'skyvJoinCreateCharacter': [{ slotIndex: number, name: string }]
 }
 
 // https://blog.makerx.com.au/a-type-safe-event-emitter-in-node-js/

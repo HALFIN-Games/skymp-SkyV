@@ -2,6 +2,10 @@ import { BrowserMessageEvent, Menu, MenuCloseEvent, MenuOpenEvent, storage } fro
 import { ClientListener, CombinedController, Sp } from "./clientListener";
 import { logTrace } from "../../logging";
 import { authGameDataStorageKey } from "../../features/authModel";
+import { ConnectionDenied } from "../events/connectionDenied";
+import { ConnectionFailed } from "../events/connectionFailed";
+import { ConnectionMessage } from "../events/connectionMessage";
+import { CustomPacketMessage } from "../messages/customPacketMessage";
 
 const events = {
   showCharacters: 'skyvJoin_showCharacters',
@@ -16,11 +20,19 @@ const diskJoinTicketPluginName = "skyv-join-ticket-no-load";
 
 type Screen = 'characters' | 'queue';
 
+type SlotView = {
+  slotIndex: number;
+  characterId: string | null;
+  name: string | null;
+};
+
 type JoinState = {
   hasAcknowledgedRules: boolean;
   selectedCharacterId: string | null;
   screen: Screen;
   maxSlots: number;
+  slots: SlotView[];
+  error: string | null;
 };
 
 export class SkyvJoinFlowUiService extends ClientListener {
@@ -30,6 +42,9 @@ export class SkyvJoinFlowUiService extends ClientListener {
     this.controller.on("menuOpen", (e) => this.onMenuOpen(e));
     this.controller.on("menuClose", (e) => this.onMenuClose(e));
     this.controller.on("browserMessage", (e) => this.onBrowserMessage(e));
+    this.controller.emitter.on("customPacketMessage", (e) => this.onCustomPacketMessage(e));
+    this.controller.emitter.on("connectionDenied", (e) => this.onConnectionDenied(e));
+    this.controller.emitter.on("connectionFailed", (e) => this.onConnectionFailed(e));
     this.controller.once("tick", () => this.bootstrapOnFirstTick());
     this.controller.once("tick", () => this.tryApplyJoinTicketFromDisk());
 
@@ -102,8 +117,8 @@ export class SkyvJoinFlowUiService extends ClientListener {
         this.state.maxSlots = decoded;
       }
       this.state.screen = 'characters';
+      this.state.error = null;
       this.writeState(this.state);
-      this.hideBrowser();
       this.render();
       return;
     }
@@ -111,6 +126,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
     if (key === events.showCharacters) {
       this.state.screen = 'characters';
       this.state.selectedCharacterId = null;
+      this.state.error = null;
       this.writeState(this.state);
       this.render();
       return;
@@ -121,10 +137,12 @@ export class SkyvJoinFlowUiService extends ClientListener {
       this.state.selectedCharacterId = typeof characterId === 'string' ? characterId : null;
       if (!this.hasJoinTicket()) {
         this.state.screen = 'characters';
+        this.state.error = null;
         this.writeState(this.state);
         this.render();
       } else {
         this.state.screen = 'queue';
+        this.state.error = null;
         this.writeState(this.state);
         this.render();
         this.controller.emitter.emit("skyvJoinConnect", { characterId: this.state.selectedCharacterId });
@@ -133,16 +151,47 @@ export class SkyvJoinFlowUiService extends ClientListener {
     }
 
     if (key === events.createCharacter) {
+      const payload = e.arguments?.[1] as any;
+      const slotIndex = typeof payload?.slotIndex === "number" ? Math.floor(payload.slotIndex) : -1;
+      const name = typeof payload?.name === "string" ? payload.name : "";
+
+      if (!this.hasJoinTicket()) {
+        this.state.screen = 'characters';
+        this.state.error = null;
+        this.writeState(this.state);
+        this.render();
+        return;
+      }
+
+      if (slotIndex < 0 || slotIndex >= this.state.maxSlots) {
+        this.state.screen = 'characters';
+        this.state.error = "Invalid slot.";
+        this.writeState(this.state);
+        this.render();
+        return;
+      }
+
+      const cleaned = name.trim();
+      if (cleaned.length < 1 || cleaned.length > 50) {
+        this.state.screen = 'characters';
+        this.state.error = "Name must be 1–50 characters.";
+        this.writeState(this.state);
+        this.render();
+        return;
+      }
+
       this.state.selectedCharacterId = null;
       if (!this.hasJoinTicket()) {
         this.state.screen = 'characters';
+        this.state.error = null;
         this.writeState(this.state);
         this.render();
       } else {
         this.state.screen = 'queue';
+        this.state.error = null;
         this.writeState(this.state);
         this.render();
-        this.controller.emitter.emit("skyvJoinConnect", { characterId: null });
+        this.controller.emitter.emit("skyvJoinCreateCharacter", { slotIndex, name: cleaned });
       }
       return;
     }
@@ -151,6 +200,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       this.controller.emitter.emit("skyvJoinCancel", {});
       this.state.screen = 'characters';
       this.state.selectedCharacterId = null;
+      this.state.error = null;
       this.writeState(this.state);
       this.render();
       return;
@@ -180,6 +230,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
           this.state.maxSlots = decoded;
         }
       }
+      storage["skyvJoinAllowConnect"] = "true";
     }
 
     this.writeState(this.state);
@@ -196,6 +247,62 @@ export class SkyvJoinFlowUiService extends ClientListener {
         discordAvatar: null,
       }
     };
+  }
+
+  private onConnectionDenied(e: ConnectionDenied) {
+    if (!this.listening) return;
+    this.state.screen = 'queue';
+    this.state.error = e.error || "Connection denied.";
+    this.writeState(this.state);
+    this.render();
+  }
+
+  private onConnectionFailed(_e: ConnectionFailed) {
+    if (!this.listening) return;
+    this.state.screen = 'queue';
+    this.state.error = "Connection failed.";
+    this.writeState(this.state);
+    this.render();
+  }
+
+  private onCustomPacketMessage(event: ConnectionMessage<CustomPacketMessage>) {
+    if (!this.listening) return;
+    let msgContent: any;
+    try {
+      msgContent = JSON.parse(event.message.contentJsonDump);
+    } catch {
+      return;
+    }
+    const t = msgContent?.customPacketType;
+    if (t === "skyvCharactersList") {
+      const maxSlots = msgContent?.maxSlots;
+      const slots = Array.isArray(msgContent?.slots) ? msgContent.slots : [];
+      if (typeof maxSlots === "number" && Number.isFinite(maxSlots)) {
+        this.state.maxSlots = Math.max(1, Math.min(50, Math.floor(maxSlots)));
+      }
+      const out: SlotView[] = [];
+      for (let i = 0; i < this.state.maxSlots; i++) {
+        const src = slots.find((s: any) => s && typeof s.slotIndex === "number" && Math.floor(s.slotIndex) === i) ?? null;
+        out.push({
+          slotIndex: i,
+          characterId: src && typeof src.characterId === "string" ? src.characterId : null,
+          name: src && typeof src.name === "string" ? src.name : null,
+        });
+      }
+      this.state.slots = out;
+      this.writeState(this.state);
+      this.render();
+      return;
+    }
+
+    if (t === "skyvCreateCharacterError") {
+      const err = msgContent?.error;
+      this.state.screen = 'characters';
+      this.state.error = typeof err === "string" ? err : "Failed to create character.";
+      this.writeState(this.state);
+      this.render();
+      return;
+    }
   }
 
   private hasJoinTicket() {
@@ -314,7 +421,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
       title.style.cssText = 'font-size:32px;font-weight:800;letter-spacing:0.4px;';
 
       const subtitle = document.createElement('div');
-      subtitle.textContent = model.screen === 'queue' ? 'Queue' : 'Character selection';
+      subtitle.textContent = model.screen === 'queue' ? 'Connecting' : 'Character selection';
       subtitle.style.cssText = 'font-size:16px;font-weight:700;color:' + theme.muted + ';margin-top:6px;';
 
       titleWrap.appendChild(title);
@@ -376,37 +483,58 @@ export class SkyvJoinFlowUiService extends ClientListener {
           return;
         }
 
-        box.appendChild(p('Slots available: ' + model.maxSlots));
+        if (model.error) {
+          const err = document.createElement('div');
+          err.textContent = model.error;
+          err.style.cssText = 'color:' + theme.text + ';background:rgba(122,30,30,0.35);border:1px solid ' + theme.border + ';border-radius:12px;padding:10px 12px;font-weight:700;';
+          box.appendChild(err);
+        }
+
         box.appendChild(p('Choose a character to join.'));
 
-        const grid = document.createElement('div');
-        grid.style.cssText = 'display:grid;grid-template-columns:repeat(5, 1fr);gap:10px;margin-top:12px;';
-        for (let i = 1; i <= model.maxSlots; i++) {
+        const list = document.createElement('div');
+        list.style.cssText = 'display:flex;flex-direction:column;gap:10px;margin-top:12px;';
+
+        const slots = Array.isArray(model.slots) && model.slots.length ? model.slots : Array.from({ length: model.maxSlots }, (_, i) => ({ slotIndex: i, characterId: null, name: null }));
+
+        for (let i = 0; i < model.maxSlots; i++) {
+          const slot = slots.find(s => s && s.slotIndex === i) || { slotIndex: i, characterId: null, name: null };
           const card = document.createElement('div');
-          card.style.cssText = 'border:1px solid ' + theme.border + ';border-radius:12px;padding:14px;min-height:120px;display:flex;flex-direction:column;justify-content:space-between;';
+          card.style.cssText = 'border:1px solid ' + theme.border + ';border-radius:12px;padding:14px;display:flex;align-items:center;justify-content:space-between;gap:12px;';
           const label = document.createElement('div');
-          label.textContent = 'Slot ' + i;
-          label.style.cssText = 'font-size:15px;font-weight:700;color:' + theme.muted + ';';
-          const action = btn('Select', () => send(${JSON.stringify(events.selectCharacter)}, 'slot-' + i));
-          action.style.padding = '10px 12px';
+          label.textContent = slot.name ? slot.name : ('Empty Slot ' + (i + 1));
+          label.style.cssText = 'font-size:18px;font-weight:800;color:' + theme.text + ';';
+
+          let action;
+          if (slot.characterId) {
+            action = btn('Play', () => send(${JSON.stringify(events.selectCharacter)}, slot.characterId));
+          } else {
+            action = btn('Create', () => {
+              const n = window.prompt('Character name (1–50 chars):', '');
+              if (!n) return;
+              send(${JSON.stringify(events.createCharacter)}, { slotIndex: i, name: String(n) });
+            });
+          }
           card.appendChild(label);
           card.appendChild(action);
-          grid.appendChild(card);
+          list.appendChild(card);
         }
-        box.appendChild(grid);
-
-        const actions = document.createElement('div');
-        actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
-        actions.appendChild(btn('Create character', () => send(${JSON.stringify(events.createCharacter)})));
+        box.appendChild(list);
         body.appendChild(box);
-        body.appendChild(actions);
       }
 
       if (model.screen === 'queue') {
         const box = document.createElement('div');
         box.style.cssText = 'display:flex;flex-direction:column;gap:10px;';
-        box.appendChild(p('Joining queue...'));
-        box.appendChild(p('Queue is not implemented yet. This is a UI/flow stub.'));
+        box.appendChild(p('Connecting...'));
+        box.appendChild(p('Please wait while we connect you to the server.'));
+
+        if (model.error) {
+          const err = document.createElement('div');
+          err.textContent = model.error;
+          err.style.cssText = 'color:' + theme.text + ';background:rgba(122,30,30,0.35);border:1px solid ' + theme.border + ';border-radius:12px;padding:10px 12px;font-weight:700;margin-top:8px;';
+          box.appendChild(err);
+        }
 
         const bar = document.createElement('div');
         bar.style.cssText = 'width:100%;height:10px;background:rgba(255,255,255,0.12);border-radius:999px;overflow:hidden;margin-top:10px;';
@@ -424,6 +552,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
 
         const actions = document.createElement('div');
         actions.style.cssText = 'display:flex;gap:10px;margin-top:14px;';
+        actions.appendChild(btn('Back', () => send(${JSON.stringify(events.showCharacters)})));
         actions.appendChild(btn('Cancel', () => send(${JSON.stringify(events.cancelQueue)}), 'danger'));
         box.appendChild(actions);
         body.appendChild(box);
@@ -451,7 +580,7 @@ export class SkyvJoinFlowUiService extends ClientListener {
   private readState(): JoinState {
     const raw = storage[this.storageKey] as string | undefined;
     if (!raw) {
-      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5 };
+      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5, slots: [], error: null };
     }
     try {
       const parsed = JSON.parse(raw) as Partial<JoinState>;
@@ -460,9 +589,15 @@ export class SkyvJoinFlowUiService extends ClientListener {
         selectedCharacterId: typeof parsed.selectedCharacterId === 'string' ? parsed.selectedCharacterId : null,
         screen: parsed.screen === 'characters' || parsed.screen === 'queue' ? parsed.screen : 'characters',
         maxSlots: typeof parsed.maxSlots === 'number' && Number.isFinite(parsed.maxSlots) ? Math.max(1, Math.min(50, Math.floor(parsed.maxSlots))) : 5,
+        slots: Array.isArray((parsed as any).slots) ? ((parsed as any).slots as any[]).map((s: any) => ({
+          slotIndex: typeof s?.slotIndex === "number" ? Math.floor(s.slotIndex) : -1,
+          characterId: typeof s?.characterId === "string" ? s.characterId : null,
+          name: typeof s?.name === "string" ? s.name : null,
+        })).filter((s: any) => typeof s.slotIndex === "number" && s.slotIndex >= 0 && s.slotIndex < 50) : [],
+        error: typeof (parsed as any).error === "string" ? (parsed as any).error : null,
       };
     } catch {
-      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5 };
+      return { hasAcknowledgedRules: true, selectedCharacterId: null, screen: 'characters', maxSlots: 5, slots: [], error: null };
     }
   }
 
